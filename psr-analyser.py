@@ -1,13 +1,13 @@
-import math
 import struct
 import sys
 
+import numpy as np
 from scapy.all import UDP, rdpcap
 from tabulate import tabulate
 
 capture_file = "pss.pcap"
 
-class PulsarPacketFormat:
+class PulsarPacket:
    packet_dest_map = {
       0: "Low PSS",
       1: "Mid PSS",
@@ -73,10 +73,10 @@ def extract_udp_payloads(pcap_file):
 
    return payloads
 
-def check_magic_words(payloads):
+def check_magic_words(payloads: bytes):
    magic_words = []
    for payload in payloads:
-      packet = PulsarPacketFormat(payload)
+      packet = PulsarPacket(payload)
       magic_words.append(packet.magic_word)
 
    if all(magic_word == "0xbeadfeed" for magic_word in magic_words):
@@ -88,11 +88,11 @@ def check_magic_words(payloads):
          print(f"Magic Words: {magic_words}")
       return False
 
-def print_metadata(payloads):
+def print_metadata(payloads: bytes):
    counter = 0
    for payload in payloads:
       counter += 1
-      packet = PulsarPacketFormat(payload)
+      packet = PulsarPacket(payload)
       data = [
          ("Sequence Number", packet.n_sequence),
          ("Timestamp Attoseconds", packet.timestamp_attoseconds),
@@ -123,8 +123,6 @@ def print_metadata(payloads):
       ]
       print(f"Packet Number #{counter}:")
       if "--plain" in sys.argv:
-         for item in data:
-            print(f"{item[0]}: {item[1]}")
          for item in data:
             print(f"{item[0]}: {item[1]}")
       else:
