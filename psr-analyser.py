@@ -1,16 +1,17 @@
 import sys
 from typing import List, Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
 from scapy.all import UDP, rdpcap
 
-sys.stdout.reconfigure(encoding='utf-8')  # Ensure UTF-8 encoding for stdout on Windows
-
 capture_file = "pss-5beam.pcap"
 
+sys.stdout.reconfigure(encoding='utf-8') # Set UTF-8 encoding for stdout, because NT is dumb
+
 class PulsarPacket:
-   """Represents a PSR-formatted packet with metadata extraction and data parsing."""
+   """Represents a PSR-formatted packet."""
    packet_dest_map = {
       0: "Low PSS",
       1: "Mid PSS",
@@ -65,7 +66,6 @@ class PulsarPacket:
       """Returns the raw data array."""
       return np.frombuffer(self._payload[self._data_offset:], dtype=np.int8)
 
-
 def extract_udp_payloads(pcap_file: str) -> List[bytes]:
    """Extracts UDP payloads from a PCAP file."""
    try:
@@ -85,7 +85,6 @@ def extract_udp_payloads(pcap_file: str) -> List[bytes]:
 
    return payloads
 
-
 def check_magic_words(payloads: List[bytes]) -> bool:
    """Checks if the magic words in all payloads are matching."""
    magic_words = [PulsarPacket(payload).magic_word for payload in payloads]
@@ -99,7 +98,6 @@ def check_magic_words(payloads: List[bytes]) -> bool:
          print(f"Magic Word: {word}")
 
    return all_match
-
 
 def extract_time_samples(packet: PulsarPacket) -> NDArray[np.complex64]:
    """Extracts time sample data from a Pulsar packet."""
@@ -120,19 +118,20 @@ def extract_time_samples(packet: PulsarPacket) -> NDArray[np.complex64]:
 
    return time_samples
 
-
 def calculate_statistics(time_samples: NDArray[np.complex64]) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
    """Calculates min, max, and standard deviation for each frequency channel."""
+   # Compute the magnitude of the complex numbers
    magnitudes = np.abs(time_samples)
 
+   # Calculate statistics based on the magnitude
    min_values = np.min(magnitudes, axis=0)
    max_values = np.max(magnitudes, axis=0)
    std_devs = np.std(magnitudes, axis=0)
 
+   # Aggregate results across polarization
    return (np.min(min_values, axis=1),
          np.max(max_values, axis=1),
          np.mean(std_devs, axis=1))
-
 
 def print_packet_statistics(packet: PulsarPacket) -> None:
    """Prints the min, max, and standard deviation for each channel in a packet."""
@@ -146,7 +145,6 @@ def print_packet_statistics(packet: PulsarPacket) -> None:
       print(f"  │   └─ Standard Deviation: {std_devs[channel]}")
       print("  │")
    print()
-
 
 def plot_statistics(packet: PulsarPacket) -> None:
    """Plots the min, max, and standard deviation for each channel in a packet."""
@@ -167,11 +165,12 @@ def plot_statistics(packet: PulsarPacket) -> None:
       plt.show()
 
 # Extract UDP payloads from the capture file and process each one
-udp_payloads = extract_udp_payloads(capture_file)
+payloads = extract_udp_payloads(capture_file)
 
-if check_magic_words(udp_payloads):
-   for payload in udp_payloads:
+if check_magic_words(payloads):
+   for payload in payloads:
       packet = PulsarPacket(payload)
-      print_packet_statistics(packet)
+      plot_statistics(packet)
+
 else:
    sys.exit(1)
