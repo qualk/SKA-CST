@@ -85,7 +85,7 @@ def check_magic_words(payloads: bytes):
    else:
       print("Magic Words are not matching!")
       for magic_word in magic_words:
-         print(f"Magic Words: {magic_words}")
+         print(f"Magic Words: {magic_word}")
       return False
 
 def print_metadata(payloads: bytes):
