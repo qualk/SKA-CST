@@ -14,6 +14,7 @@ from typing import List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.typing import NDArray
 from scapy.all import rdpcap
 from scapy.layers.inet import UDP
 
@@ -65,7 +66,7 @@ class PulsarPacket:
         self._data_offset = metadata_offset + weight_data_bytes
 
     @property
-    def data(self) -> np.ndarray:
+    def data(self) -> NDArray[np.int8]:
         """Returns the raw data array from the payload."""
         return np.frombuffer(self._payload[self._data_offset:], dtype=np.int8)
 
@@ -97,17 +98,24 @@ def check_magic_words(payloads: List[bytes]) -> bool:
         return False
 
 
-def extract_time_samples(packet: PulsarPacket) -> np.ndarray:
+def extract_time_samples(packet: PulsarPacket) -> NDArray[np.complex64]:
     """Extracts time sample data from a Pulsar packet."""
     n_time_samples, n_channels = packet.n_time_samples, packet.n_channels
+    time_samples = np.zeros((n_time_samples, n_channels, 2), dtype=np.complex64)
+
     payload = packet.data
 
-    # Vectorised extraction of I and Q samples
-    i_samples = payload[::2].reshape(n_channels, 2, n_time_samples)
-    q_samples = payload[1::2].reshape(n_channels, 2, n_time_samples)
+    for channel in range(n_channels):
+        for polarisation in range(2):  # 0 for A, 1 for B
+            start_index = (channel * 2 * n_time_samples + polarisation * n_time_samples) * 2
+            end_index = start_index + n_time_samples * 2
 
-    # Combine I and Q into complex numbers
-    return i_samples + 1j * q_samples
+            i = payload[start_index:end_index:2]
+            q = payload[start_index + 1:end_index:2]
+
+            time_samples[:, channel, polarisation] = i + 1j * q
+
+    return time_samples
 
 
 def accumulate_data(packets: List[PulsarPacket]) -> np.ndarray:
@@ -115,10 +123,14 @@ def accumulate_data(packets: List[PulsarPacket]) -> np.ndarray:
     return np.concatenate([extract_time_samples(packet) for packet in packets], axis=0)
 
 
-def calculate_statistics(time_samples: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def calculate_statistics(time_samples: NDArray[np.complex64] = False) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Calculates min, max, and standard deviation for each frequency channel."""
     magnitudes = np.abs(time_samples)
-    return np.min(magnitudes, axis=0), np.max(magnitudes, axis=0), np.std(magnitudes, axis=0)
+    min_values = np.min(magnitudes, axis=0)
+    max_values = np.max(magnitudes, axis=0)
+    std_devs = np.std(magnitudes, axis=0)
+
+    return (min_values.min(axis=1), max_values.max(axis=1), std_devs.mean(axis=1))
 
 
 def print_statistics(packets: List[PulsarPacket], per_packet: bool = False) -> None:
@@ -155,15 +167,15 @@ def plot_statistics(packets: List[PulsarPacket]) -> None:
 
     with plt.style.context("default"):
         _, ax1 = plt.subplots(figsize=(10, 6))
-        ax2 = ax1.twinx()
+        ax2 = ax1.twinx()  # Create a second y-axis
 
         ax1.plot(channels, min_values, label='Min Value', marker='o', color='b')
         ax1.plot(channels, max_values, label='Max Value', marker='o', color='g')
         ax2.plot(channels, std_devs, label='Standard Deviation', marker='o', linestyle='--', color='r')
 
-        ax1.set_xlabel('Channel')
-        ax1.set_ylabel('Value')
-        ax2.set_ylabel('Standard Deviation', color='r')
+        ax1.set_xlabel('Channels')
+        ax1.set_ylabel('Min/Max Value')
+        ax2.set_ylabel('Standard Deviation')
 
         ax1.set_title('Statistics Across All Packets')
         ax1.legend(loc='upper right')
