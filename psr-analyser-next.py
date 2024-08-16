@@ -60,7 +60,7 @@ class PulsarPacket:
       return np.frombuffer(self._payload[self._data_offset:], dtype=np.int8)
 
 
-def extract_udp_payloads(pcap_file: str) -> List[bytes]:
+def extract_udp_payload(pcap_file: str) -> List[bytes]:
    """Extracts UDP payloads from a PCAP file."""
    try:
       packets = rdpcap(pcap_file)
@@ -115,7 +115,24 @@ def extract_time_samples(packet: PulsarPacket) -> NDArray[np.complex64]:
    return time_samples
 
 
-def calculate_statistics(time_samples: NDArray[np.complex64]) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+def accumulate_time_samples(packets: List[PulsarPacket]) -> NDArray[np.complex64]:
+   """Accumulates time sample data from all packets."""
+   all_time_samples = [extract_time_samples(packet) for packet in packets]
+   return np.concatenate(all_time_samples, axis=0)
+
+
+def calculate_statistics_across_packets(time_samples: NDArray[np.complex64]) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+   """Calculates min, max, and standard deviation across all packets for each frequency channel."""
+   magnitudes = np.abs(time_samples)
+   min_values = np.min(magnitudes, axis=0)
+   max_values = np.max(magnitudes, axis=0)
+   std_devs = np.std(magnitudes, axis=0)
+
+   return (np.min(min_values, axis=1),
+         np.max(max_values, axis=1),
+         np.mean(std_devs, axis=1))
+
+def calculate_statistics_per_packet(time_samples: NDArray[np.complex64]) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
    """Calculates min, max, and standard deviation for each frequency channel."""
    magnitudes = np.abs(time_samples)
    min_values = np.min(magnitudes, axis=0)
@@ -127,9 +144,23 @@ def calculate_statistics(time_samples: NDArray[np.complex64]) -> Tuple[NDArray[n
          np.mean(std_devs, axis=1))
 
 
-def print_packet_statistics(packet: PulsarPacket) -> None:
+def print_statistics_across_packets(packets: List[PulsarPacket]) -> None:
+   """Prints the min, max, and standard deviation across all packets for each channel."""
+   time_samples = accumulate_time_samples(packets)
+   min_values, max_values, std_devs = calculate_statistics_across_packets(time_samples)
+
+   print("Results Across All Packets:")
+   for channel, (min_val, max_val, std_dev) in enumerate(zip(min_values, max_values, std_devs), start=1):
+      print(f"  ├─ Channel {channel}:")
+      print(f"  │   ├─ Min Value: {min_val}")
+      print(f"  │   ├─ Max Value: {max_val}")
+      print(f"  │   └─ Standard Deviation: {std_dev}")
+      print("  │")
+   print()
+
+def print_statistics_per_packet(packet: PulsarPacket) -> None:
    """Prints the min, max, and standard deviation for each channel in a packet."""
-   min_values, max_values, std_devs = calculate_statistics(extract_time_samples(packet))
+   min_values, max_values, std_devs = calculate_statistics_per_packet(extract_time_samples(packet))
 
    print(f"Results for Packet {packet.n_sequence + 1}:")
    for channel, (min_val, max_val, std_dev) in enumerate(zip(min_values, max_values, std_devs), start=1):
@@ -141,9 +172,28 @@ def print_packet_statistics(packet: PulsarPacket) -> None:
    print()
 
 
-def plot_statistics(packet: PulsarPacket) -> None:
+def plot_statistics_across_packets(packets: List[PulsarPacket]) -> None:
+   """Plots the min, max, and standard deviation across all packets for each channel."""
+   time_samples = accumulate_time_samples(packets)
+   min_values, max_values, std_devs = calculate_statistics_across_packets(time_samples)
+   channels = np.arange(1, packets[0].n_channels + 1)
+
+   with plt.style.context("ggplot"):
+      plt.figure(figsize=(10, 6))
+      plt.plot(channels, min_values, label='Min Value', marker='o')
+      plt.plot(channels, max_values, label='Max Value', marker='o')
+      plt.plot(channels, std_devs, label='Standard Deviation', marker='o')
+
+      plt.xlabel('Channel')
+      plt.ylabel('Value')
+      plt.title('Statistics Across All Packets')
+      plt.legend()
+      plt.grid(True)
+      plt.show()
+
+def plot_statistics_per_packet(packet: PulsarPacket) -> None:
    """Plots the min, max, and standard deviation for each channel in a packet."""
-   min_values, max_values, std_devs = calculate_statistics(extract_time_samples(packet))
+   min_values, max_values, std_devs = calculate_statistics_per_packet(extract_time_samples(packet))
    channels = np.arange(1, packet.n_channels + 1)
 
    with plt.style.context("ggplot"):
@@ -161,12 +211,20 @@ def plot_statistics(packet: PulsarPacket) -> None:
 
 
 # Extract UDP payloads from the capture file and process each one
-udp_payloads = extract_udp_payloads(capture_file)
+udp_payload = extract_udp_payload(capture_file)
 
-if check_magic_words(udp_payloads):
-   for payload in udp_payloads:
-      packet = PulsarPacket(payload)
-      # print_packet_statistics(packet)
-      print(f"Scale Values: {packet.scale1}, {packet.scale2}, {packet.scale3}, {packet.scale4}")
+if check_magic_words(udp_payload):
+   # for payload in udp_payload:
+   #    packet = PulsarPacket(payload)
+   #    plot_statistics_per_packet(packet)
+   packets = [PulsarPacket(payload) for payload in udp_payload]
+   print_statistics_across_packets(packets)
 else:
    sys.exit(1)
+
+
+# plot timestamps over time
+# x axis is packets
+# y axis is various information e.g. beamformer id, timestamp
+
+# time samples in each channel across all packets
