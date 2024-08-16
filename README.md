@@ -6,7 +6,7 @@ https://gitlab.com/ska-telescope/low-cbf/ska-low-cbf-integration
 
 ## How to Use
 
-Name your network capture `pss.pcap` (or change the value `capture_file = "pss.pcap"` near the top of the file) and make sure it's in the same directory as the script `psr-analyser.py`. Then run the script with `python psr-analyser.py`.
+Name your network capture `pss.pcap` (or change the value `CAPTURE_FILE = "pss.pcap"` near the top of the file) and make sure it's in the same directory as the script `psr-analyser.py`. Then run the script with `python psr-analyser.py`.
 
 ### Arguments
 
